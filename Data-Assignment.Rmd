@@ -1,0 +1,169 @@
+---
+title: "R Notebook"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+### Load packages and data
+ 
+```{r}
+suppressMessages(library(dplyr))
+suppressMessages(library(kableExtra))
+
+packageVersion('dplyr')
+packageVersion('kableExtra')
+R.version
+```
+ 
+```{r}
+setwd("~/Desktop/MarshallProjectDataAssignment")
+survey_responses <- read.csv("responses.csv")
+```
+
+
+### Data exploration
+
+Get acquainted with the data. 
+
+```{r}
+unique(survey_responses$answer_set) # see what the different answer sets are
+nrow(filter(survey_responses, answer_set == "all-surveys"))
+nrow(filter(survey_responses, answer_set == "both-surveys"))
+```
+The notebook says that "all-surveys" includes the answers across both surveys (set 2024-001 and set 2024-002). The "both-surveys" set may only include individuals who responded to both surveys. I am choosing to analyze the "all-surveys" set for the cursory analysis since it includes more responses and since that is the set that is used by the Marshall Project notebook.
+
+```{r}
+df <- filter(survey_responses, answer_set == "all-surveys") # data frame that only includes the "all-answers" survey set. 
+```
+
+```{r}
+df_state <- df[which(df$state != "0_ALL_STATES"),] # get state level data
+df_all_states <- df[which(df$state == "0_ALL_STATES"),] # get data for all states
+```
+
+```{r}
+print(paste("Number of respondents:", unique(filter(df_all_states, question_ids == "facility_name")$n_respondents)))
+print(paste("Count:",sum(filter(df_all_states, question_ids == "facility_name")$count)))
+```
+15,481 people responded to the facility name question, so it looks like at least 15,481 people in jail responded to the survey nationally. 
+
+```{r}
+colnames(df) # look at each variable in the dataset
+```
+The survey question "people_with_convictions_should_vote" appears to be the most closely related to our question about incarcerated people's opinions on increasing voting rights for the current and formerly incarcerated, so I will concentrate on responses to this question first. 
+
+### People with convictions should vote survey responses
+
+
+```{r}
+responses <- filter(df_state, question_ids == "facility_name__people_with_convictions_should_vote") # data set with responses to 'people_with_convictions_should_vote' 
+unique(responses$people_with_convictions_should_vote) # get the different responses we see to this question
+```
+Here are the different responses we see to the "people_with_convictions_should_vote" question.
+
+```{r}
+facility_count <- data.frame(aggregate(responses$facility_name, list(responses$n_respondents, responses$state), FUN = min)) # get number of respondents by facility
+colnames(facility_count) <- c("n_respondents","state","facility_name") # change column names
+sum(facility_count$n_respondents)
+```
+There were 375 respondents to this question across all the facilities surveyed. This is low compared to the number of people who responded to other questions. The limited number of respondents could be problematic for our story. 
+
+```{r}
+sum(responses$count)
+```
+We can see 330 responses according to the count variable, but it looks like the total number of respondents is 375. The discrepancy is possibly because we cannot see answer groups with less than 5 people. However, it's possible that n_respondents does counts a person who took both surveys as two responses. According to the notebook, it looks like the explanation is the former, but I need to clarify this. I will assume that the count is different from the number of respondents because some answers are suppressed for now.
+
+Here I'm going to generate percentage breakdowns of the unique answers to the voting rights questions based on the total number of responses. Note that this is likely not the true percent of people who chose each of these answers since we may not be able see all of the responses / the true counts. 
+```{r}
+# calculate
+unique_responses <- unique(responses$people_with_convictions_should_vote)
+for(response in unique_responses){
+  total <- sum(filter(responses, people_with_convictions_should_vote == response)$count)
+  pct <- (total / 375)*100 # using 375 here because that's the total number of responses
+  print(paste(total, "people /", round(pct, digits = 1), "percent of responses said that people with felony convictions should vote:", response))
+}
+```
+The majority of the respondents think people with felony convictions should be able to vote while incarcerated for any crime. 
+
+```{r}
+(sum(filter(responses, people_with_convictions_should_vote == "While incarcerated for any crime")$count) + 4) / 375 # percent if 4 more people from 11th facility answered this way
+```
+We can see the count of people who responded that people with felony convictions should be able to vote while incarcerated for any crime for 10 out of 11 facilities. This means at most 4 more respondents from the 11th facility responded "while incarcerated for any crime" to this question (less than 5 is the threshold for being suppressed). So the true number of respondents who answered in this way ranges from 213 - 217 meaning the true percentage out of all respondents is somewhere between 56.8 - 57.9%
+
+
+```{r}
+print(paste("Number of facilities with responses to the voting rights question:", length(unique(responses$facility_name))))
+```
+
+```{r}
+print(unique(responses$state))
+```
+
+Only people from facilities in D.C., Texas, and West Virginia responded to this question (that we are able to see in the filtered results). This may be problematic for a story with a a broad national lens.
+
+
+```{r}
+state_summary <-aggregate(facility_count$n_respondents, list(facility_count$state), FUN = sum) # get number of respondents by state
+colnames(state_summary) <- c("state","n_respondents") # change column names for legibility
+state_summary
+```
+About 69% of people who responded to this question were incarcerated in jails in West Virginia. This means our sample is heavily skewed; this doesn't give us a sense of the opinions of people in jails elsewhere in the country. 
+
+
+```{r}
+kable(df_state %>% select(state, facility_name, race, count, n_respondents, pct_of_respondents,question_ids) %>% filter(state == "WV", question_ids == "facility_name__race", race == "White") %>% arrange(facility_name))
+```
+The majority of respondents from West Virginia facilities who indicated what race they identify as said they were White. But we don't know the racial breakdown of those who answered the voting rights question. However, the evidence we have tells us that responses from West Virginia jails may not capture many opinions from people of other races. This is a potential limitation that we need to look into more. 
+
+
+```{r}
+# rearrange factor levels - this is just to control how it is organized in the dataframe 
+responses$people_with_convictions_should_vote <- factor(responses$people_with_convictions_should_vote, 
+                                                        levels = c("While incarcerated for any crime","After they have left prison",
+                                                                   "While incarcerated, but only if they were convicted of non-violent offenses"))
+# visualize answers from respondents aggregated by facility
+kable(responses %>% select(facility_name, people_with_convictions_should_vote, pct_of_respondents, count) %>% arrange(people_with_convictions_should_vote, -pct_of_respondents))
+```
+For 7 of the 11 facilities with respondents to this question, a majority of respondents answered that people convicted of felonies should be able to vote while incarcerated for any crime. The percent of respondents who indicated that people convicted of felonies should be able to vote while incarcerated for any crime varies widely from about 39% to 92%. 1 facility (WV DCR Southern Regional Jail) had a majority of respondents answer that people convicted of felonies should only be able to vote after they have left prison.
+
+The DC DOC: Central Detention Facility had a notably higher percentage of respondents indicate support for people voting while incarcerated for any crime at 92%. From the notebook, it looks like a majority of the respondents from this facility who answered the question on who they are going to vote for said they'd vote for Donald Trump and many indicated they were independents (37%) or democrats (27%). However, these could have been different respondents from those who answered the question on whether people convicted of felonies should be allowed to vote. Further analysis is needed to draw conclusions about how political affiliations and opinions on voting rights intersect.
+
+
+### Takeaways
+- About 57% of people who answered the "people_with_convictions_should_vote" question said that people with felony convictions should be able to vote while incarcerated for any crime. The degree of support among respondents varied by jail, but in 7 out of 11 facilities with respondents a majority of respondents supported voting rights for people who were convicted for a felony while still incarcerated. 
+- Only 375 people from 11 jails in 3 states / territories answered the "people_with_convictions_should_vote" question, this is a small sample that does not allow us to look at opinions in jails in many states. It also appears that the sample has the potential to heavily overrepresent White respondents. 
+
+### Next steps
+- What are the races and political affiliations of the respondents who answered the question on when people with felony convictions should be allowed to vote? Are there any patterns we can identify? 
+- Look into why so many of the respondents to the voting rights question were from West Virginia. Did facilities in West Virginia do something differently? Double check that the exact same survey was implemented everywhere.
+- Look into why so few respondents answered this question compared to some of the other questions.
+- Look into answers to other questions to see if they can tell us anything about respondents' opinions on voting rights and increased voting access for incarcerated people.
+
+
+
+
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
