@@ -16,6 +16,9 @@ packageVersion('dplyr')
 packageVersion('kableExtra')
 R.version
 ```
+Dplyr version: 1.1.4
+kableExtra version: 1.4.0
+R version: 4.2
  
 ```{r}
 setwd("~/Desktop/MarshallProjectDataAssignment")
